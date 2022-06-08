@@ -23,6 +23,12 @@ int pinDataOut = 5;
 int pinClock = 6;
 int pinEnable = 7;
 
+// Button that grounds this pin when pushed
+int pinButton = 8;
+
+// LED output pin
+int pinLED = 13;
+
 // Logic analyzer trace of communication indicates values are held
 // for 2.7us. However, according to documentation Arduino can only
 // guarantee down to 3us.
@@ -346,6 +352,10 @@ void setup() {
   pinMode(pinClock, OUTPUT);
   pinMode(pinEnable, OUTPUT);
 
+  pinMode(pinLED, OUTPUT);
+
+  pinMode(pinButton, INPUT_PULLUP);
+
   // Clock is active low, so initialize to high.
   digitalWrite(pinClock, HIGH);
 
@@ -356,7 +366,7 @@ void setup() {
   // DataIn is input and not our business to initialize.
 
   Serial.begin(115200);
-  Serial.println("Toyota 86120-08010 Faceplate Test");
+  Serial.println("Honda CD Player Faceplate Test");
 
   audioModePosition = audioModeEncoder.read();
 
@@ -370,7 +380,7 @@ void setup() {
   scannerDirection = 1;
 
   powerPress = false;
-  currentMode = 1;
+  currentMode = 0;
 }
 
 void cursorSegmentUpdate()
@@ -407,13 +417,15 @@ void loop() {
       // Knob moved. Leave old segment in the correct state and
       // get the state of the new segment.
       setSegment(cursorPosition,cursorSegmentState);
-      cursorPosition = newPos/2;
+      cursorPosition = newPos/4;
       cursorSegmentState = getSegment(cursorPosition);
 
       cursorState = true;
       cursorSegmentUpdate();
 
       audioModePosition = newPos;
+      Serial.print("New position: ");
+      Serial.println(cursorPosition);
     }
     else if (cursorNextToggle < millis())
     {
@@ -441,6 +453,11 @@ void loop() {
     {
       scannerState += scannerDirection;
     }
+  }
+
+  if (LOW == digitalRead(pinButton) && !audioModePress)
+  {
+    audioModePress = true;
   }
 
   if (HIGH == digitalRead(pinDataIn))
@@ -475,12 +492,6 @@ void loop() {
       }
     }
 
-    // Forget what everything above did, turn everything on.
-    for(uint8_t seg = 0; seg < SEG_PER_MSG*MSG_OUT_COUNT; seg++)
-    {
-      setSegment(seg, true);
-    }
-
     // Draw the current canvas.
     for(int m = 0; m < MSG_OUT_COUNT; m++)
     {
@@ -513,5 +524,8 @@ void loop() {
     msgInPrint();
   }
 
-  delay(500);
+  digitalWrite(pinLED, true);
+  delay(10);
+  digitalWrite(pinLED, false);
+  delay(40);
 }
