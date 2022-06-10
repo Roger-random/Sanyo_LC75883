@@ -10,6 +10,8 @@
 
 #define MSG_IN_BYTES 4
 
+#define ENCODER_STEPS_PER_DETENT 2
+
 // For best performance Encoder prefers interrupt pins.
 // https://www.pjrc.com/teensy/td_libs_Encoder.html
 // On an Arduino Nano that means pins 2 and 3. Adjust as needed for other hardware.
@@ -24,7 +26,8 @@ int pinClock = 6;
 int pinEnable = 7;
 
 // Button that grounds this pin when pushed
-int pinButton = 8;
+int pinPowerButton = 9;
+long lastPowerPress;
 
 // LED output pin
 int pinLED = 13;
@@ -41,6 +44,7 @@ void hold()
 
 Encoder audioModeEncoder(pinEncoderA, pinEncoderB);
 long audioModePosition;
+long audioModePositionOffset;
 
 uint8_t msgIn[MSG_IN_BYTES];
 uint8_t msgOut[MSG_OUT_COUNT][MSG_OUT_BYTES];
@@ -354,7 +358,7 @@ void setup() {
 
   pinMode(pinLED, OUTPUT);
 
-  pinMode(pinButton, INPUT_PULLUP);
+  pinMode(pinPowerButton, INPUT_PULLUP);
 
   // Clock is active low, so initialize to high.
   digitalWrite(pinClock, HIGH);
@@ -369,9 +373,11 @@ void setup() {
   Serial.println("Honda CD Player Faceplate Test");
 
   audioModePosition = audioModeEncoder.read();
+  audioModePositionOffset = 0;
 
   msgOutReset();
 
+  lastPowerPress = millis();
   cursorNextToggle = millis();
   cursorState = true;
   audioModePress = false;
@@ -411,13 +417,28 @@ void loop() {
   if (currentMode == 0)
   {
     // Drawing mode: see if the audio mode knob has been turned.
-    long newPos = audioModeEncoder.read();
+    long newPos = audioModeEncoder.read() + audioModePositionOffset;
+    if (newPos < 0)
+    {
+      // Segment min reached but knob kept moving down. Adjust offset so
+      // the first turn back will immediately start moving up.
+      audioModePositionOffset = -audioModeEncoder.read();
+      newPos = 0;
+    }
+    else if (newPos >= SEG_PER_MSG*MSG_OUT_COUNT*ENCODER_STEPS_PER_DETENT )
+    {
+      // Segment max reached but knob kept moving up. Adjust offset so
+      // the first turn back will immediately start moving down.
+      audioModePositionOffset = SEG_PER_MSG*MSG_OUT_COUNT*ENCODER_STEPS_PER_DETENT-1 - audioModeEncoder.read();
+      newPos = SEG_PER_MSG*MSG_OUT_COUNT*ENCODER_STEPS_PER_DETENT-1;
+    }
+
     if (newPos != audioModePosition)
     {
       // Knob moved. Leave old segment in the correct state and
       // get the state of the new segment.
       setSegment(cursorPosition,cursorSegmentState);
-      cursorPosition = newPos/4;
+      cursorPosition = newPos/ENCODER_STEPS_PER_DETENT;
       cursorSegmentState = getSegment(cursorPosition);
 
       cursorState = true;
@@ -455,17 +476,21 @@ void loop() {
     }
   }
 
-  if (LOW == digitalRead(pinButton) && !audioModePress)
+  if (LOW == digitalRead(pinPowerButton))
   {
-    audioModePress = true;
+    if (millis() > lastPowerPress + 500)
+    {
+      powerPress = true;
+    }
+    lastPowerPress = millis();
   }
 
   if (HIGH == digitalRead(pinDataIn))
   {
-    if (powerPress)
+    if (audioModePress)
     {
       // Switch mode
-      powerPress = false;
+      audioModePress = false;
       currentMode = currentMode+1;
       if (currentMode >= 2)
       {
@@ -480,11 +505,11 @@ void loop() {
     if (0 == currentMode)
     {
       // Drawing mode
-      if (audioModePress)
+      if (powerPress)
       {
-        // Audio knob pressed, toggle current segment state.
+        // Power button pressed, toggle current segment state.
         cursorSegmentState = !cursorSegmentState;
-        audioModePress = false;
+        powerPress = false;
         cursorState = cursorSegmentState;
         setSegment(cursorPosition,cursorSegmentState);
         msgOutPrint();
@@ -521,7 +546,15 @@ void loop() {
     digitalWrite(pinEnable, LOW);
     hold();
 
-    msgInPrint();
+    if (!audioModePress && (msgIn[3]&0x10))
+    {
+      audioModePress=true;
+      Serial.print("Mode switch");
+    }
+    else
+    {
+      msgInPrint();
+    }
   }
 
   digitalWrite(pinLED, true);
