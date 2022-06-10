@@ -12,6 +12,8 @@
 
 #define ENCODER_STEPS_PER_DETENT 2
 
+#define ANIMATION_FRAMES 16
+
 // For best performance Encoder prefers interrupt pins.
 // https://www.pjrc.com/teensy/td_libs_Encoder.html
 // On an Arduino Nano that means pins 2 and 3. Adjust as needed for other hardware.
@@ -50,8 +52,8 @@ uint8_t msgIn[MSG_IN_BYTES];
 uint8_t msgOut[MSG_OUT_COUNT][MSG_OUT_BYTES];
 
 // Bit patterns that toggle one of 16 groups of segments, arranged left to right.
-// Used for implementing a Larson scanner with the LCD
-uint8_t vertGroups[16][MSG_OUT_COUNT][MSG_OUT_BYTES] = {
+// Used for implementing animation with the LCD
+uint8_t animation[ANIMATION_FRAMES][MSG_OUT_COUNT][MSG_OUT_BYTES] = {
   // AM DISC IN
   {
     { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
@@ -341,9 +343,9 @@ bool cursorSegmentState;
 unsigned long cursorNextToggle;
 bool audioModePress;
 
-// Larson scanner mode
-uint8_t scannerState;
-int8_t scannerDirection;
+// Animation mode
+uint8_t animationState;
+int8_t animationDirection;
 
 // Mode switch button
 bool powerPress;
@@ -382,8 +384,8 @@ void setup() {
   cursorState = true;
   audioModePress = false;
 
-  scannerState = 0;
-  scannerDirection = 1;
+  animationState = 0;
+  animationDirection = 1;
 
   powerPress = false;
   currentMode = 0;
@@ -402,13 +404,13 @@ void cursorSegmentUpdate()
   }
 }
 
-void copyGroup(uint8_t groupIndex)
+void copyFrame(uint8_t frameIndex)
 {
   for(int m = 0; m < MSG_OUT_COUNT; m++)
   {
     for (int i = 0; i < MSG_OUT_BYTES; i++)
     {
-      msgOut[m][i] |= vertGroups[groupIndex][m][i];
+      msgOut[m][i] |= animation[frameIndex][m][i];
     }
   }
 }
@@ -457,22 +459,22 @@ void loop() {
   }
   else if (currentMode == 1)
   {
-    // Larson scanner mode: copy two out of 16 vertical groups.
+    // Animation mode: copy two out of 16 vertical groups.
     msgOutReset();
-    copyGroup(scannerState);
-    copyGroup(scannerState+1);
+    copyFrame(animationState);
+    copyFrame(animationState+1);
 
-    if (scannerState==0 && scannerDirection==-1)
+    if (animationState==0 && animationDirection==-1)
     {
-      scannerDirection = 1;
+      animationDirection = 1;
     }
-    else if (scannerState==14 && scannerDirection==1)
+    else if (animationState==ANIMATION_FRAMES-2 && animationDirection==1)
     {
-      scannerDirection = -1;
+      animationDirection = -1;
     }
     else
     {
-      scannerState += scannerDirection;
+      animationState += animationDirection;
     }
   }
 
