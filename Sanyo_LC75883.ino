@@ -52,6 +52,8 @@ long lastModePress;
 uint8_t msgIn[MSG_IN_BYTES];
 uint8_t msgOut[MSG_OUT_COUNT][MSG_OUT_BYTES];
 
+uint8_t msgAllOn[MSG_OUT_COUNT][MSG_OUT_BYTES];
+
 // Bit patterns that toggle one of 16 groups of segments, arranged left to right.
 // Used for implementing animation with the LCD
 uint8_t animation[ANIMATION_FRAMES][MSG_OUT_COUNT][MSG_OUT_BYTES] = {
@@ -342,6 +344,18 @@ void setup() {
   audioModePosition = audioModeEncoder.read();
   audioModePositionOffset = 0;
 
+  // Rather than hard-coding a set of values to represent state with all segments
+  // on, programmatically create it so it automatically reflects whatever structure
+  // the rest of the code is using. (Created after having to update too many times
+  // by hand...)
+  msgOutReset();
+  for(uint8_t i = 0; i < SEG_PER_MSG*MSG_OUT_COUNT; i++)
+  {
+    setSegment(i, true);
+  }
+  memcpy(msgAllOn, msgOut, MSG_OUT_COUNT*MSG_OUT_BYTES);
+
+  // Reset the output message again after creating allOn
   msgOutReset();
 
   lastPowerPress = millis();
@@ -436,6 +450,16 @@ void loop() {
       animationState = animationNext;
     }
   }
+  else if (currentMode == 2)
+  {
+    // Copy the byte pattern created in setup()
+    memcpy(msgOut, msgAllOn, MSG_OUT_COUNT*MSG_OUT_BYTES);
+  }
+  else
+  {
+    Serial.println("Current mode has fallen out of bounds. Resetting to zero");
+    currentMode = 0;
+  }
 
   if (LOW == digitalRead(pinPowerButton))
   {
@@ -453,7 +477,7 @@ void loop() {
       // Switch mode
       audioModePress = false;
       currentMode = currentMode+1;
-      if (currentMode >= 2)
+      if (currentMode >= 3)
       {
         currentMode = 0;
       }
