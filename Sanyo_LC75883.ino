@@ -89,7 +89,7 @@ uint8_t animation[ANIMATION_FRAMES][MSG_OUT_COUNT][MSG_OUT_BYTES] = {
   },
   {
     { 0x00, 0x01, 0x20, 0x08, 0x00, 0x04, 0x40, 0x00, 0x00},
-    { 0xB8, 0x00, 0x08, 0x00, 0x10, 0x00, 0x41, 0x00, 0x80},
+    { 0x98, 0x00, 0x08, 0x00, 0x10, 0x00, 0x41, 0x00, 0x80},
     { 0x00, 0x10, 0x00, 0xC0, 0xED, 0x02, 0x00, 0x00, 0x40}
   },
   {
@@ -313,6 +313,10 @@ bool audioModePress;
 // Animation mode
 uint8_t animationState;
 int8_t animationDirection;
+long nextAnimationFrameTime;
+long animationFrameStep;
+long animationStepDelta;
+bool animationAccel;
 
 // Mode switch button
 bool powerPress;
@@ -367,9 +371,13 @@ void setup() {
 
   animationState = 0;
   animationDirection = 1;
+  nextAnimationFrameTime = millis();
+  animationFrameStep = 50;
+  animationStepDelta = 2;
+  animationAccel = true;
 
   powerPress = false;
-  currentMode = 0;
+  currentMode = 3;
 }
 
 void cursorSegmentUpdate()
@@ -455,6 +463,52 @@ void loop() {
     // Copy the byte pattern created in setup()
     memcpy(msgOut, msgAllOn, MSG_OUT_COUNT*MSG_OUT_BYTES);
   }
+  else if (currentMode == 3)
+  {
+    if (millis() > nextAnimationFrameTime)
+    {
+      uint8_t animationNext;
+
+      if (animationState == 0 && animationDirection == -1)
+      {
+        animationNext = ANIMATION_FRAMES-1;
+      }
+      else if (animationState == ANIMATION_FRAMES-1 && animationDirection == 1)
+      {
+        animationNext = 0;
+      }
+      else
+      {
+        animationNext = animationState + animationDirection;
+      }
+
+      msgOutReset();
+      copyFrame(animationState);
+      copyFrame(animationNext);
+
+      animationState = animationNext;
+
+      animationFrameStep += animationStepDelta;
+      if (animationAccel)
+      {
+        animationStepDelta = -2;
+        if (animationFrameStep < 30)
+        {
+          animationAccel = false;
+        }
+      }
+      else
+      {
+        animationStepDelta = 2;
+        if (animationFrameStep > 90)
+        {
+          animationDirection *= -1;
+          animationAccel = true;
+        }
+      }
+      nextAnimationFrameTime = millis() + animationFrameStep;
+    }
+  }
   else
   {
     Serial.println("Current mode has fallen out of bounds. Resetting to zero");
@@ -477,7 +531,7 @@ void loop() {
       // Switch mode
       audioModePress = false;
       currentMode = currentMode+1;
-      if (currentMode >= 3)
+      if (currentMode >= 4)
       {
         currentMode = 0;
       }
