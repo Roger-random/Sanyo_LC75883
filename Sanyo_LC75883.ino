@@ -1,6 +1,9 @@
 /*
- *   Interfacing with a Toyota 86120-08010 tape deck faceplate which primarily
- *   centers around the Sanyo LC75853N LCD driver.
+ *   Interfacing with a Honda CD player/changer faceplate which primarily
+ *   centers around the Sanyo LC75883 LCD driver.
+ *
+ *   Hardware target is an Arduino Nano, which uses an AVR ATmega328.
+ *   https://docs.arduino.cc/hardware/nano
  */
 #include <Encoder.h>
 
@@ -21,17 +24,18 @@
 int pinEncoderA = 2;
 int pinEncoderB = 3;
 
-// Arduino digital pins to use for Sanyo CCB communication
+// Arduino digital pins to use for Sanyo CCB communication. These can be changed to
+// any unused digital GPIO.
 int pinDataIn = 4;
 int pinDataOut = 5;
 int pinClock = 6;
 int pinEnable = 7;
 
-// Button that grounds this pin when pushed
+// Button that grounds this pin when pushed, can be any unused digital GPIO.
 int pinPowerButton = 9;
 long lastPowerPress;
 
-// LED output pin
+// LED output pin. Arduino Nano module has one onboard at pin 13.
 int pinLED = 13;
 
 // Logic analyzer trace of communication indicates values are held
@@ -44,18 +48,20 @@ void hold()
   delayMicroseconds(usHold);
 }
 
+// Encoder class to read quadrature encoder knob, plus supporting classes.
 Encoder audioModeEncoder(pinEncoderA, pinEncoderB);
 long audioModePosition;
 long audioModePositionOffset;
 long lastModePress;
 
+// Sanyo CCB communication buffers
 uint8_t msgIn[MSG_IN_BYTES];
 uint8_t msgOut[MSG_OUT_COUNT][MSG_OUT_BYTES];
 
+// Copy this to msgOut[][] to turn all LCD segments on. Value set in setup().
 uint8_t msgAllOn[MSG_OUT_COUNT][MSG_OUT_BYTES];
 
-// Bit patterns that toggle one of 16 groups of segments, arranged left to right.
-// Used for implementing animation with the LCD
+// Bit patterns for LCD animation, each frame in the format of msgOut[][]
 uint8_t animation[ANIMATION_FRAMES][MSG_OUT_COUNT][MSG_OUT_BYTES] = {
   {
     { 0x08, 0x11, 0x20, 0x08, 0x00, 0x04, 0x40, 0x00, 0x00},
@@ -448,6 +454,7 @@ void loop() {
   }
   else if (currentMode == 1)
   {
+    // Step through animation using knob
     uint8_t animationNext = (newPos/ENCODER_STEPS_PER_DETENT) % ANIMATION_FRAMES;
 
     if (animationNext != animationState)
@@ -460,11 +467,13 @@ void loop() {
   }
   else if (currentMode == 2)
   {
+    // All segments on.
     // Copy the byte pattern created in setup()
     memcpy(msgOut, msgAllOn, MSG_OUT_COUNT*MSG_OUT_BYTES);
   }
   else if (currentMode == 3)
   {
+    // Animation loop
     if (millis() > nextAnimationFrameTime)
     {
       uint8_t animationNext;
